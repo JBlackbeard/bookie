@@ -4,6 +4,7 @@ use rusqlite::Result;
 mod bookmark;
 mod database;
 mod parser;
+use std::fmt;
 use structopt::StructOpt;
 use Bookie::{Add, Delete, Update};
 fn main() -> Result<(), Error> {
@@ -24,19 +25,6 @@ fn main() -> Result<(), Error> {
         Update {} => println!("Update functionality not yet implemented"),
     };
 
-    // let bm = bookmark::Bookmark {
-    //     id: 1,
-    //     title: "Wikipedia".to_string(),
-    //     url: "wikipedia.org".to_string(),
-    //     notes: "".to_string(),
-    //     tags: vec!["Knowledge".to_string(), "encyclopedia".to_string()],
-    //     date_added: "".to_string(),
-    // };
-    // match db.add_bookmark(&bm.title, &bm.url, &bm.notes, &bm.tags) {
-    //     Ok(a) => a,
-    //     Err(a) => println!("{}", a),
-    // }
-
     db.display_bookmarks();
 
     Ok(())
@@ -51,5 +39,23 @@ enum Error {
 impl From<rusqlite::Error> for Error {
     fn from(error: rusqlite::Error) -> Error {
         Error::RusqliteError(error)
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::RusqliteError(err) => write!(f, "{}", err),
+            Error::IoError(err) => write!(f, "{}", err),
+        }
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Error::RusqliteError(err) => Some(err),
+            Error::IoError(err) => Some(err),
+        }
     }
 }
