@@ -1,7 +1,9 @@
-use crate::bookmark;
+use crate::{bookmark, Error};
 use bookmark::Bookmark;
 use chrono::Local;
-use rusqlite::{params, Connection};
+use crossterm::style::Colorize;
+use crossterm::style::Styler;
+use rusqlite::{params, Connection, NO_PARAMS};
 use std::fs;
 use std::path;
 pub struct DB {
@@ -17,7 +19,6 @@ impl DB {
                 let bookie_dir = format!("{}/.bookie", home_dir.display());
                 let path = path::Path::new(&bookie_dir);
                 fs::create_dir_all(path).unwrap();
-                println!("{}", path.exists());
                 let db_path = format!("{}/test_db.db", path.display());
 
                 Connection::open(&db_path).unwrap()
@@ -25,40 +26,39 @@ impl DB {
         };
 
         let db = DB { conn };
-        db.init();
+        match db.init() {
+            Ok(_) => {}
+            Err(err) => {
+                println!("{:?}", err);
+            }
+        }
+
         db
     }
-    fn init(&self) {
-        self.conn
-            .execute("PRAGMA foreign_keys = ON", params![])
-            .unwrap();
+    fn init(&self) -> Result<(), Error> {
+        self.conn.execute("PRAGMA foreign_keys = ON", params![])?;
 
-        self.conn
-            .execute(
-                "CREATE TABLE IF NOT EXISTS bookmarks (
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS bookmarks (
                     id              INTEGER PRIMARY KEY,
                     title           TEXT NOT NULL,
                     url             TEXT NOT NULL UNIQUE,
                     notes           TEXT,
                     date_added      DATETIME
                     )",
-                params![],
-            )
-            .unwrap();
+            params![],
+        )?;
 
-        self.conn
-            .execute(
-                "CREATE TABLE IF NOT EXISTS tags (
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS tags (
                     id              INTEGER PRIMARY KEY,
                     name            TEXT NOT NULL UNIQUE
                 )",
-                params![],
-            )
-            .unwrap();
+            params![],
+        )?;
 
-        self.conn
-            .execute(
-                "CREATE TABLE IF NOT EXISTS tags_to_bookmarks (
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS tags_to_bookmarks (
                     id              INTEGER PRIMARY KEY,
                     bookmark_id     INTEGER NOT NULL,
                     tag_id          INTEGER NOT NULL,
@@ -69,14 +69,19 @@ impl DB {
                 CREATE UNIQUE  INDEX UIX_bookmark_id_tag_id
                 ON tags_to_bookmarks
                 ( bookmark_id ASC, tag_id ASC );",
-                params![],
-            )
-            .unwrap();
+            params![],
+        )?;
+        Ok(())
     }
 
     pub fn get_all_bookmarks(&self) -> Vec<Bookmark> {
         let query = "SELECT * FROM bookmarks;";
-        self.vectorize(query)
+        self.vectorize(query, Vec::new())
+    }
+
+    pub fn get_selected_bookmark(&self, id: u32) -> Vec<Bookmark> {
+        let query = "SELECT * FROM bookmarks where id = ?1";
+        self.vectorize(query, vec![id.to_string()])
     }
 
     pub fn get_tags(&self, bookmark_id: u32) -> rusqlite::Result<Vec<String>> {
@@ -91,17 +96,17 @@ impl DB {
         Ok(tags)
     }
 
-    pub fn delete_bookmark(&self, url: String) {
-        let query = "DELETE FROM bookmarks WHERE url = ?1";
+    pub fn delete_bookmark(&self, id: u32) {
+        let query = "DELETE FROM bookmarks WHERE id = ?1";
         // let mut stmt = self.conn.prepare(&query).unwrap();
-        self.conn.execute(query, params![&url]).unwrap();
+        self.conn.execute(query, params![&id]).unwrap();
     }
 
-    fn vectorize(&self, query: &str) -> Vec<Bookmark> {
+    fn vectorize(&self, query: &str, params: Vec<String>) -> Vec<Bookmark> {
         let mut stmt = self.conn.prepare(query).unwrap();
 
         let bookmark_iter = stmt
-            .query_map(params![], |row| {
+            .query_map(params, |row| {
                 Ok(Bookmark {
                     id: row.get(0)?,
                     title: row.get(1)?,
@@ -144,7 +149,11 @@ impl DB {
             }
             Err(err) => match err {
                 rusqlite::Error::SqliteFailure(_, msg) => {
-                    println!("The bookmark could not bet saved. {}", msg.unwrap());
+                    println!(
+                        "{} {}",
+                        "The bookmark could not bet saved:\n".red(),
+                        msg.unwrap().red().underlined()
+                    );
                     Ok(())
                 }
                 _ => {
@@ -187,18 +196,97 @@ impl DB {
             println!("{}", bookmark);
         }
     }
+
+    pub fn display_selected_bookmark(&self, id: u32) {
+        let bookmark_iter = self.get_selected_bookmark(id);
+
+        for bookmark in bookmark_iter {
+            println!("{}", bookmark);
+        }
+    }
+
+    pub fn get_url_by_id(&self, id: u32) -> String {
+        let query = "SELECT URL FROM bookmarks WHERE id = ?1;";
+        let url: String = self
+            .conn
+            .query_row(query, params![id], |row| row.get(0))
+            .unwrap_or(format!("Could not find URL for id {}", id));
+        url
+    }
+
+    pub fn get_bookmark_count(&self) -> u32 {
+        let query = "SELECT COUNT(*) FROM bookmarks;";
+        let count = self
+            .conn
+            .query_row(query, rusqlite::NO_PARAMS, |row| row.get(0))
+            .unwrap();
+        count
+    }
+
+    pub fn bookmark_exists(&self, id: u32) -> bool {
+        let query = "SELECT COUNT(*) FROM bookmarks WHERE id = ?1";
+        let count: u8 = self
+            .conn
+            .query_row(query, params![id], |row| row.get(0))
+            .unwrap();
+
+        match count {
+            1 => true,
+            _ => false,
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    fn test_db_setup() -> DB {
+        let db = DB::open(true);
+        let bm1 = bookmark::Bookmark {
+            id: 1,
+            title: "Wikipedia".to_string(),
+            url: "wikipedia.org".to_string(),
+            notes: "".to_string(),
+            tags: vec!["knowledge".to_string(), "encyclopedia".to_string()],
+            date_added: "".to_string(),
+        };
+        let _ = db.add_bookmark(&bm1.title, &bm1.url, &bm1.notes, &bm1.tags);
+
+        let bm2 = bookmark::Bookmark {
+            id: 2,
+            title: "GitHub".to_string(),
+            url: "github.com".to_string(),
+            notes: "Where code lives".to_string(),
+            tags: vec!["programming".to_string(), "Coding".to_string()],
+            date_added: "".to_string(),
+        };
+        let _ = db.add_bookmark(&bm2.title, &bm2.url, &bm2.notes, &bm2.tags);
+        db
+    }
     use super::*;
 
     #[test]
-    fn test_on_delete_cascade() {
-        // let conn = db.open(false);
+    fn test_get_url_by_id() {
+        let db = test_db_setup();
+        let b = db.get_url_by_id(1);
+        assert_eq!("wikipedia.org", b);
+    }
 
-        // TODO: check if entries for tags_to_bookmarks exist for values 1,1.
-        // then delete bookmark with id 1 and check if it is deleted in tags_to_bookmarks as well
-        assert_eq!(1, 1);
+    #[test]
+    fn test_bm_count() {
+        let db = test_db_setup();
+        assert_eq!(2, db.get_bookmark_count())
+    }
+    #[test]
+    fn test_delete_bookmark() {
+        let db = test_db_setup();
+        db.delete_bookmark(1);
+        assert_eq!(1, db.get_bookmark_count());
+    }
+
+    #[test]
+    fn test_bookmark_exists() {
+        let db = test_db_setup();
+        assert!(db.bookmark_exists(1));
+        assert!(!db.bookmark_exists(10));
     }
 }
