@@ -6,6 +6,8 @@ use structopt::StructOpt;
     about = "All possible usages for bookmark manager Bookie"
 )]
 pub enum Bookie {
+    Display {},
+
     Add {
         /// Activate debug mode
         // short and long flags (-d, --debug) will be deduced from the field's name
@@ -32,6 +34,10 @@ pub enum Bookie {
         #[structopt(short = "t", long = "tags", default_value = "")]
         tags: Vec<String>,
     },
-    Delete {},
+    Delete {
+        /// ID
+        #[structopt()]
+        id: u32,
+    },
     Update {},
 }
