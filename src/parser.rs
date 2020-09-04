@@ -8,6 +8,12 @@ use structopt::StructOpt;
 pub enum Bookie {
     Display {},
 
+    // Search by tag
+    Search {
+        /// search_list
+        #[structopt()]
+        search_list: Vec<String>,
+    },
     Add {
         /// Activate debug mode
         // short and long flags (-d, --debug) will be deduced from the field's name

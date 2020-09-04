@@ -6,7 +6,7 @@ mod database;
 mod parser;
 use std::{fmt, io};
 use structopt::StructOpt;
-use Bookie::{Add, Delete, Display, Update};
+use Bookie::{Add, Delete, Display, Search, Update};
 fn main() -> Result<(), Error> {
     let db = DB::open(false);
 
@@ -15,6 +15,12 @@ fn main() -> Result<(), Error> {
     match input {
         Display {} => {
             db.display_bookmarks();
+        }
+
+        Search { search_list } => {
+            for bookmark in db.search(search_list) {
+                println!("{}", bookmark);
+            }
         }
 
         Add {
@@ -50,10 +56,10 @@ fn main() -> Result<(), Error> {
         }
         Update {} => println!("Update functionality not yet implemented"),
     };
-    let bookies = db.search_by_tag(vec!["programm", "basi"]);
-    for book in bookies {
-        println!("Result: {}", book);
-    }
+    // let bookies = db.search_by_tag(vec!["programm", "basi"]);
+    // for book in bookies {
+    //     println!("Result: {}", book);
+    // }
 
     Ok(())
 }

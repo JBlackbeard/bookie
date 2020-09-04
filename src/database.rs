@@ -241,12 +241,33 @@ impl DB {
             "SELECT *
         FROM bookmarks b
         WHERE b.id in 
-            (SELECT tb.bookmark_id FROM tags_to_bookmarks tb  INNER JOIN tags t on tb.tag_id = t.id
-            WHERE t.name LIKE \"%{}%\"",
+            (SELECT tb.bookmark_id FROM tags_to_bookmarks tb
+                INNER JOIN tags t on tb.tag_id = t.id
+                WHERE t.name LIKE \"%{}%\"",
             &tags.remove(0)
         );
         for tag in tags {
             query.push_str(format!("OR t.name LIKE \"%{}%\"", tag).as_str());
+        }
+        query.push_str(");");
+        self.vectorize(query.as_str(), Vec::new())
+    }
+
+    pub fn search(&self, mut search_list: Vec<String>) -> Vec<Bookmark> {
+        let mut query = format!(
+            "SELECT *
+        FROM bookmarks b
+        WHERE b.id in 
+            (SELECT tb.bookmark_id FROM tags_to_bookmarks tb 
+                INNER JOIN tags t on tb.tag_id = t.id
+                INNER JOIN bookmarks bm on tb.bookmark_id = bm.id
+                WHERE (t.name || bm.title || bm.url) LIKE \"%{}%\"",
+            &search_list.remove(0)
+        );
+        for keyword in search_list {
+            query.push_str(
+                format!("OR (t.name || bm.title || bm.url) LIKE \"%{}%\"", keyword).as_str(),
+            );
         }
         query.push_str(");");
         self.vectorize(query.as_str(), Vec::new())
