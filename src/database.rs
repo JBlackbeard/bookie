@@ -235,6 +235,22 @@ impl DB {
             _ => false,
         }
     }
+
+    pub fn search_by_tag(&self, mut tags: Vec<&str>) -> Vec<Bookmark> {
+        let mut query = format!(
+            "SELECT *
+        FROM bookmarks b
+        WHERE b.id in 
+            (SELECT tb.bookmark_id FROM tags_to_bookmarks tb  INNER JOIN tags t on tb.tag_id = t.id
+            WHERE t.name LIKE \"%{}%\"",
+            &tags.remove(0)
+        );
+        for tag in tags {
+            query.push_str(format!("OR t.name LIKE \"%{}%\"", tag).as_str());
+        }
+        query.push_str(");");
+        self.vectorize(query.as_str(), Vec::new())
+    }
 }
 
 #[cfg(test)]

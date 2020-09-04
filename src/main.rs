@@ -50,6 +50,10 @@ fn main() -> Result<(), Error> {
         }
         Update {} => println!("Update functionality not yet implemented"),
     };
+    let bookies = db.search_by_tag(vec!["programm", "basi"]);
+    for book in bookies {
+        println!("Result: {}", book);
+    }
 
     Ok(())
 }
